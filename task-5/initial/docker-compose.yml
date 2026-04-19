@@ -93,7 +93,7 @@ services:
   app:
     depends_on:
       - postgresdb
-      - filebeat1
+      - filebeat
       - grafana
     image: batch-processing
     build:
