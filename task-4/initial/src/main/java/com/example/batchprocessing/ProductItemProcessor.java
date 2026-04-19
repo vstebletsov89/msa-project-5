@@ -5,11 +5,8 @@ import org.slf4j.LoggerFactory;
 
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.DataClassRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.atomic.AtomicReference;
 
 @Component
 public class ProductItemProcessor implements ItemProcessor<Product, Product> {
@@ -19,11 +16,27 @@ public class ProductItemProcessor implements ItemProcessor<Product, Product> {
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
 
-    @Override
+	@Override
 	public Product process(final Product product) {
-      //todo
+		String loyality = jdbcTemplate.query(
+				"SELECT loyalityData FROM loyality_data WHERE productSku = ?",
+				ps -> ps.setLong(1, product.productSku()),
+				rs -> rs.next() ? rs.getString(1) : null
+		);
 
-		return //todo
+		String enriched = loyality != null ? loyality : product.productData();
+
+		Product result = new Product(
+				product.productId(),
+				product.productSku(),
+				product.productName(),
+				product.productAmount(),
+				enriched
+		);
+
+		log.info("Processing product sku={} : '{}' -> '{}'",
+				product.productSku(), product.productData(), enriched);
+
+		return result;
 	}
-
 }

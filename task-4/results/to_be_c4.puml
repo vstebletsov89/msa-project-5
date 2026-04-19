@@ -1,0 +1,46 @@
+@startuml C4-Container-ToBe-TradeWare-SpringBatch
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+title C4 Container Diagram — TradeWare Stock ETL (To Be, Spring Batch)
+
+Person(warehouse_user, "Сотрудник склада", "Загружает CSV-отчёт по остаткам")
+Person(ops, "DevOps / SRE", "Мониторинг и алерты")
+
+System_Boundary(tradeware, "TradeWare Platform (GKE / GCP)") {
+
+  Container(erp_ui, "ERP UI", "Angular + WebSockets", "Загрузка CSV,\nстатус обработки")
+  Container(erp_api, "ERP Monolith (legacy)", "Java 11 / WildFly", "Валидация формата,\nзагрузка CSV в GCS,\nтриггер Batch Job")
+
+  Container(gcs, "Reports Bucket", "Google Cloud Storage", "Исходные CSV-отчёты")
+
+  Container(batch_app, "Stock ETL (Spring Batch)", "Java 17 / Spring Boot 3", "Reader: FlatFileItemReader\nProcessor: enrich loyality\nWriter: JdbcBatchItemWriter\nChunk=10, retry/skip")
+  Container(cronjob, "Batch Trigger", "K8s Job / CronJob", "Запускает Spring Batch Job\nparameters: fileName, runId")
+
+  ContainerDb(pg, "Products DB", "PostgreSQL (Cloud SQL)", "products,\nloyality_data,\nBATCH_* (JobRepository)")
+
+  Container(prom, "Prometheus", "Monitoring", "Скрейп /actuator/prometheus")
+  Container(grafana, "Grafana", "Dashboards", "step duration,\nitems read/written,\nfailed/skipped")
+  Container(elk, "ELK", "Logging", "stdout из Pod")
+  Container(alert, "Alertmanager", "Алерты", "Job failed / SLA 30s/2k")
+}
+
+System_Ext(smtp, "Email / Slack", "Оповещения инцидентов")
+
+Rel(warehouse_user, erp_ui, "Загружает CSV", "HTTPS")
+Rel(erp_ui, erp_api, "POST /upload", "REST")
+Rel(erp_api, gcs, "PUT CSV", "HTTPS")
+Rel(erp_api, cronjob, "Создаёт Job с параметрами", "K8s API")
+Rel(cronjob, batch_app, "Старт контейнера", "K8s")
+
+Rel(batch_app, gcs, "Читает CSV", "HTTPS")
+Rel(batch_app, pg, "SELECT loyality_data,\nBATCH JDBC INSERT products,\nJobRepository", "JDBC")
+
+Rel(batch_app, prom, "Метрики", "HTTP /actuator/prometheus")
+Rel(batch_app, elk, "Логи", "stdout")
+Rel(prom, grafana, "Datasource")
+Rel(prom, alert, "rules")
+Rel(alert, smtp, "notify")
+Rel(ops, grafana, "Dashboards", "HTTPS")
+
+@enduml
