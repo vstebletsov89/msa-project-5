@@ -21,6 +21,13 @@ docker compose up --build
 ```
 
 ```bash
-docker exec -it <postgres_container> psql -U postgres -d productsdb \
--c "SELECT productid, productsku, productname, productdata FROM products ORDER BY productid;"
+docker compose exec postgresdb psql -U postgres -d productsdb -c "SELECT * FROM products ORDER BY productid;"
+
+docker compose exec postgresdb psql -U postgres -d productsdb \
+  -c "SELECT * FROM loyality_data ORDER BY productsku;"
+```
+
+```bash
+docker compose exec postgresdb psql -U postgres -d productsdb \
+-c "SELECT job_execution_id, status, exit_code, start_time, end_time FROM BATCH_JOB_EXECUTION;"
 ```
