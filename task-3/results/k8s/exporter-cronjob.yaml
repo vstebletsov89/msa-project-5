@@ -1,0 +1,57 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: shipments-exporter
+  namespace: shipments-export
+  labels:
+    app: shipments-exporter
+spec:
+  # Ежедневно в 20:00 — по требованию задания.
+  schedule: "0 20 * * *"
+  timeZone: "Europe/Moscow"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 3                # retry-политика
+      activeDeadlineSeconds: 1800    # hard-timeout 30 минут
+      ttlSecondsAfterFinished: 600   # держим под 10 минут после успеха — удобно смотреть логи
+      template:
+        metadata:
+          labels:
+            app: shipments-exporter
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: exporter
+              image: shipments-exporter:v1.0.0
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: POSTGRES_HOST
+                  value: "postgres"
+                - name: POSTGRES_PORT
+                  value: "5432"
+                - name: EXPORT_TABLE
+                  value: "shipments"
+                - name: EXPORT_DIR
+                  value: "/exports"
+              envFrom:
+                - secretRef:
+                    name: postgres-credentials
+              volumeMounts:
+                - name: exports
+                  mountPath: /exports
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+          volumes:
+            # emptyDir — временный том пода.
+            # результат работы виден в логах и в самом поде до его удаления.
+            - name: exports
+              emptyDir: {}

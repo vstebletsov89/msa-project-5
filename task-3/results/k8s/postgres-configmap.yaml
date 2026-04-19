@@ -1,0 +1,28 @@
+# DDL + тестовые данные. Монтируется в /docker-entrypoint-initdb.d/
+# и применяется автоматически при первой инициализации Postgres.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: shipments-export
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS shipments (
+       id           BIGSERIAL PRIMARY KEY,
+       external_ref TEXT           NOT NULL UNIQUE,
+       origin       TEXT           NOT NULL,
+       destination  TEXT           NOT NULL,
+       status       TEXT           NOT NULL,
+       weight_kg    NUMERIC(10, 2) NOT NULL,
+       created_at   TIMESTAMPTZ    NOT NULL DEFAULT now());
+
+    INSERT INTO shipments (external_ref, origin, destination, status, weight_kg, created_at)
+    SELECT
+        'SHP-' || lpad(g::text, 8, '0'),
+        (ARRAY['Moscow', 'Saint-Petersburg', 'Kazan', 'Novosibirsk', 'Ekaterinburg'])[1 + (g % 5)],
+        (ARRAY['Berlin', 'Stockholm', 'Istanbul', 'Beijing', 'Astana'])[1 + (g % 5)],
+        (ARRAY['CREATED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'])[1 + (g % 4)],
+        round((random() * 1000)::numeric, 2),
+        now() - (g || ' minutes')::interval
+    FROM generate_series(1, 5000) AS g
+    ON CONFLICT (external_ref) DO NOTHING;

@@ -1,0 +1,49 @@
+# Ручной запуск экспортера для демонстрации без ожидания 20:00.
+# Эквивалент: kubectl -n shipments-export create job \
+#   --from=cronjob/shipments-exporter shipments-exporter-manual
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: shipments-exporter-manual
+  namespace: shipments-export
+  labels:
+    app: shipments-exporter
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 600     # держим под 10 минут после успеха — удобно смотреть логи
+  template:
+    metadata:
+      labels:
+        app: shipments-exporter
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: exporter
+          image: shipments-exporter:v1.0.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_HOST
+              value: "postgres"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: EXPORT_TABLE
+              value: "shipments"
+            - name: EXPORT_DIR
+              value: "/exports"
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          volumeMounts:
+            - name: exports
+              mountPath: /exports
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: exports
+          emptyDir: {}
