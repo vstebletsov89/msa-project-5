@@ -1,12 +1,13 @@
 services:
   postgresdb:
-    image: postgres:16
+    image: postgres:16-alpine
+    container_name: postgresdb
     restart: unless-stopped
     env_file: ./.env
     environment:
-      - POSTGRES_USER=${POSTGRESDB_USER}
-      - POSTGRES_PASSWORD=${POSTGRESDB_ROOT_PASSWORD}
-      - POSTGRES_DB=${POSTGRESDB_DATABASE}
+      POSTGRES_USER: ${POSTGRESDB_USER}
+      POSTGRES_PASSWORD: ${POSTGRESDB_ROOT_PASSWORD}
+      POSTGRES_DB: ${POSTGRESDB_DATABASE}
     ports:
       - "${POSTGRESDB_LOCAL_PORT}:${POSTGRESDB_DOCKER_PORT}"
     healthcheck:
@@ -17,94 +18,123 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  elasticsearch:
-    image: 'docker.elastic.co/elasticsearch/elasticsearch:7.17.28'
-    platform: linux/amd64
-    container_name: 'elasticsearch'
-    restart: 'unless-stopped'
-    ports:
-      - '9200:9200'
-      - '9300:9300'
-    environment:
-      - 'discovery.type=single-node'
-      - 'xpack.security.enabled=false'
-      - 'ES_JAVA_OPTS=-Xms512m -Xmx512m'
-    healthcheck:
-      test: 'curl -f http://localhost:9200 || exit 1'
-
-  logstash:
-    image: 'docker.elastic.co/logstash/logstash:7.17.28'
-    container_name: 'logstash'
-    restart: 'unless-stopped'
-    ports:
-      - '5044:5044'
-    volumes:
-      - './logstash/pipeline:/usr/share/logstash/pipeline/'
-    depends_on:
-      - 'elasticsearch'
-    healthcheck:
-      test: 'curl -f http://localhost:9600 || exit 1'
-
-  kibana:
-    image: 'docker.elastic.co/kibana/kibana:7.17.28'
-    container_name: 'kibana'
-    restart: 'unless-stopped'
-    ports:
-      - '5601:5601'
-    environment:
-      - 'ELASTICSEARCH_HOSTS=http://elasticsearch:9200'
-    depends_on:
-      - 'elasticsearch'
-    healthcheck:
-      test: 'curl -f http://localhost:5601 || exit 1'
-
-  filebeat:
-    build: 'filebeat'
-    container_name: 'filebeat'
-    restart: 'unless-stopped'
-    volumes:
-      - '/var/run/docker.sock:/var/run/docker.sock'
-      - '/var/lib/docker/containers:/usr/share/dockerlogs/data:ro'
-    depends_on:
-      - 'elasticsearch'
-      - 'logstash'
-
-  prometheus:
-    image: 'prom/prometheus:v3.4.0'
-    container_name: 'prometheus'
-    restart: 'unless-stopped'
-    volumes:
-      - './prometheus/prometheus.yml:/etc/prometheus/prometheus.yml'
-    ports:
-      - '9090:9090'
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "localhost", "9090" ]
-
-  grafana:
-    image: 'grafana/grafana:12.0.1'
-    container_name: 'grafana'
-    restart: 'unless-stopped'
-    ports:
-      - '3000:3000'
-    environment:
-      - 'GF_USERS_ALLOW_SIGN_UP=false'
-    volumes:
-      - './grafana/provisioning:/etc/grafana/provisioning'
-    depends_on:
-      - 'prometheus'
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "localhost", "3000" ]
-
   app:
-    depends_on:
-      - postgresdb
-      - filebeat
-      - grafana
     image: batch-processing
+    container_name: stock-etl-app
     build:
       context: .
       dockerfile: ./Dockerfile
     restart: "no"
+    env_file: ./.env
+    depends_on:
+      postgresdb:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresdb:${POSTGRESDB_DOCKER_PORT}/${POSTGRESDB_DATABASE}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRESDB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRESDB_ROOT_PASSWORD}
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus,metrics
+      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:9.3.3
+    container_name: logstash
+    restart: unless-stopped
+    ports:
+      - "5044:5044"
+      - "9600:9600"
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9600 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.3.3
+    container_name: kibana
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:9.3.3
+    container_name: filebeat
+    user: root
+    restart: unless-stopped
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      logstash:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.11.2
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana:13.1.0-24866141508
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
 
 volumes:
   pgdata:
+  esdata:
+  grafana-data:

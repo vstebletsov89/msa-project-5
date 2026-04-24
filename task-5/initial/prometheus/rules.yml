@@ -1,0 +1,31 @@
+groups:
+  - name: stock-etl-batch-alerts
+    interval: 10s
+
+    rules:
+      - alert: StockEtlLastRunFailed
+        expr: stock_etl_last_run_status{application="stock-etl-batch"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Stock ETL last run failed"
+          description: "Last Spring Batch execution finished with FAILED status"
+
+      - alert: StockEtlSlowRun
+        expr: stock_etl_last_run_duration_seconds{application="stock-etl-batch"} > 30
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stock ETL run is too slow"
+          description: "Last Stock ETL run duration exceeded SLA: 30 seconds"
+
+      - alert: StockEtlHighSkipCount
+        expr: stock_etl_last_run_skip_count{application="stock-etl-batch"} > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stock ETL skipped records"
+          description: "Last Stock ETL run contains skipped records"
