@@ -18,26 +18,6 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  app:
-    image: batch-processing
-    container_name: stock-etl-app
-    build:
-      context: .
-      dockerfile: ./Dockerfile
-    restart: "no"
-    env_file: ./.env
-    depends_on:
-      postgresdb:
-        condition: service_healthy
-    ports:
-      - "8080:8080"
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresdb:${POSTGRESDB_DOCKER_PORT}/${POSTGRESDB_DATABASE}
-      SPRING_DATASOURCE_USERNAME: ${POSTGRESDB_USER}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRESDB_ROOT_PASSWORD}
-      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus,metrics
-      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
-
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
     container_name: elasticsearch
@@ -55,7 +35,7 @@ services:
       test: ["CMD-SHELL", "curl -f http://localhost:9200 || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 30
 
   logstash:
     image: docker.elastic.co/logstash/logstash:9.3.3
@@ -73,7 +53,45 @@ services:
       test: ["CMD-SHELL", "curl -f http://localhost:9600 || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 30
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:9.3.3
+    container_name: filebeat
+    user: root
+    restart: unless-stopped
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      logstash:
+        condition: service_healthy
+
+  app:
+    image: batch-processing
+    container_name: stock-etl-app
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    restart: "no"
+    env_file: ./.env
+    depends_on:
+      postgresdb:
+        condition: service_healthy
+      logstash:
+        condition: service_healthy
+      filebeat:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresdb:${POSTGRESDB_DOCKER_PORT}/${POSTGRESDB_DATABASE}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRESDB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRESDB_ROOT_PASSWORD}
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus,metrics
+      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
 
   kibana:
     image: docker.elastic.co/kibana/kibana:9.3.3
@@ -92,19 +110,6 @@ services:
       timeout: 5s
       retries: 30
 
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:9.3.3
-    container_name: filebeat
-    user: root
-    restart: unless-stopped
-    volumes:
-      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    depends_on:
-      logstash:
-        condition: service_healthy
-
   prometheus:
     image: prom/prometheus:v3.11.2
     container_name: prometheus
@@ -115,7 +120,8 @@ services:
     ports:
       - "9090:9090"
     depends_on:
-      - app
+      app:
+        condition: service_started
 
   grafana:
     image: grafana/grafana:13.1.0-24866141508
@@ -132,7 +138,8 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_started
 
 volumes:
   pgdata:
