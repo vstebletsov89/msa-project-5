@@ -27,6 +27,7 @@ dependencies {
 	runtimeOnly 'org.postgresql:postgresql'
 
 	// Monitoring
+	implementation 'io.prometheus:prometheus-metrics-exporter-pushgateway'
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
 	// Logging (JSON logs for ELK)

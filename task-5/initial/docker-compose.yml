@@ -122,6 +122,8 @@ services:
     depends_on:
       app:
         condition: service_started
+      pushgateway:
+        condition: service_started
 
   grafana:
     image: grafana/grafana:13.1.0-24866141508
@@ -140,6 +142,13 @@ services:
     depends_on:
       prometheus:
         condition: service_started
+
+  pushgateway:
+    image: prom/pushgateway:v1.11.1
+    container_name: pushgateway
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
 
 volumes:
   pgdata:
