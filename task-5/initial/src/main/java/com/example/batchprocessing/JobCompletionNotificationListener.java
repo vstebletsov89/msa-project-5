@@ -22,9 +22,24 @@ public class JobCompletionNotificationListener implements JobExecutionListener {
 	}
 
 	@Override
+	public void beforeJob(JobExecution jobExecution) {
+		log.info("!!! JOB STARTED !!! name={}, id={}",
+				jobExecution.getJobInstance().getJobName(), jobExecution.getJobId());
+	}
+
+	@Override
 	public void afterJob(JobExecution jobExecution) {
 		if (jobExecution.getStatus() == BatchStatus.COMPLETED) {
-			// todo
+			log.info("!!! JOB FINISHED !!! Verifying results in 'products' table:");
+
+			jdbcTemplate.query(
+					"SELECT productId, productSku, productName, productAmount, productData FROM products ORDER BY productId",
+					new DataClassRowMapper<>(Product.class)
+			).forEach(p -> log.info("Found <{{}}> in the database.", p));
+		} else {
+			log.error("!!! JOB FAILED !!! status={}", jobExecution.getStatus());
+			jobExecution.getAllFailureExceptions()
+					.forEach(ex -> log.error("Failure:", ex));
 		}
 	}
 }

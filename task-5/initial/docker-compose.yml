@@ -1,16 +1,21 @@
-version: "3.8"
-
 services:
   postgresdb:
-    image: postgres
+    image: postgres:16
     restart: unless-stopped
     env_file: ./.env
     environment:
-      - POSTGRES_USER=$POSTGRESDB_USER
-      - POSTGRES_PASSWORD=$POSTGRESDB_ROOT_PASSWORD
-      - POSTGRES_DB=$POSTGRESDB_DATABASE
+      - POSTGRES_USER=${POSTGRESDB_USER}
+      - POSTGRES_PASSWORD=${POSTGRESDB_ROOT_PASSWORD}
+      - POSTGRES_DB=${POSTGRESDB_DATABASE}
     ports:
-      - $POSTGRESDB_LOCAL_PORT:$POSTGRESDB_DOCKER_PORT
+      - "${POSTGRESDB_LOCAL_PORT}:${POSTGRESDB_DOCKER_PORT}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRESDB_USER} -d ${POSTGRESDB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 
   elasticsearch:
     image: 'docker.elastic.co/elasticsearch/elasticsearch:7.17.28'
@@ -99,4 +104,7 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
-    restart: no
+    restart: "no"
+
+volumes:
+  pgdata:
