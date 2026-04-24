@@ -1,5 +1,10 @@
 package com.example.batchprocessing;
 
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.prometheus.metrics.exporter.pushgateway.PushGateway;
@@ -25,6 +30,8 @@ public class JobCompletionNotificationListener implements JobExecutionListener {
 	private final JdbcTemplate jdbcTemplate;
 	private final MeterRegistry meterRegistry;
 	private final String pushgatewayUrl;
+	private final PrometheusMeterRegistry prometheusMeterRegistry;
+	private final String pushgatewayUrl;
 
 	private final AtomicLong lastRunStatus = new AtomicLong(1);
 	private final AtomicLong lastSuccessTimestampSeconds = new AtomicLong(0);
@@ -34,10 +41,11 @@ public class JobCompletionNotificationListener implements JobExecutionListener {
 	public JobCompletionNotificationListener(
 			JdbcTemplate jdbcTemplate,
 			MeterRegistry meterRegistry,
+			PrometheusMeterRegistry prometheusMeterRegistry,
 			@Value("${pushgateway.url}") String pushgatewayUrl
 	) {
 		this.jdbcTemplate = jdbcTemplate;
-		this.meterRegistry = meterRegistry;
+		this.prometheusMeterRegistry = prometheusMeterRegistry;
 		this.pushgatewayUrl = pushgatewayUrl;
 
 		Gauge.builder("stock_etl_last_run_status", lastRunStatus, AtomicLong::get)
@@ -120,19 +128,33 @@ public class JobCompletionNotificationListener implements JobExecutionListener {
 	}
 
 	private void pushMetricsToPushgateway(JobExecution jobExecution) {
+		String jobName = jobExecution.getJobInstance().getJobName();
+		String pushUrl = "%s/metrics/job/stock-etl-batch/batch_job/%s"
+				.formatted(pushgatewayUrl, jobName);
+
 		try {
-			PushGateway pushGateway = PushGateway.builder()
-					.address(pushgatewayUrl)
-					.build();
+			String metrics = prometheusMeterRegistry.scrape();
 
-			pushGateway.pushAdd();
+			HttpURLConnection connection = (HttpURLConnection) URI.create(pushUrl).toURL().openConnection();
+			connection.setRequestMethod("PUT");
+			connection.setDoOutput(true);
+			connection.setRequestProperty("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
 
-			log.info("Pushed Stock ETL metrics to Pushgateway: url={}, jobName={}, jobId={}",
-					pushgatewayUrl,
-					jobExecution.getJobInstance().getJobName(),
-					jobExecution.getJobId());
-		} catch (IOException e) {
-			log.error("Failed to push Stock ETL metrics to Pushgateway: url={}", pushgatewayUrl, e);
+			try (OutputStream os = connection.getOutputStream()) {
+				os.write(metrics.getBytes(StandardCharsets.UTF_8));
+			}
+
+			int responseCode = connection.getResponseCode();
+
+			if (responseCode >= 200 && responseCode < 300) {
+				log.info("Pushed Stock ETL metrics to Pushgateway: url={}, responseCode={}", pushUrl, responseCode);
+			} else {
+				log.error("Failed to push Stock ETL metrics to Pushgateway: url={}, responseCode={}", pushUrl, responseCode);
+			}
+
+			connection.disconnect();
+		} catch (Exception e) {
+			log.error("Failed to push Stock ETL metrics to Pushgateway: url={}", pushUrl, e);
 		}
 	}
 }
