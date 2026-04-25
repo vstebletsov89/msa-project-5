@@ -27,7 +27,7 @@ dependencies {
 	runtimeOnly 'org.postgresql:postgresql'
 
 	// Monitoring
-	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+	implementation 'io.micrometer:micrometer-registry-prometheus'
 
 	// Logging (JSON logs for ELK)
 	implementation 'net.logstash.logback:logstash-logback-encoder:8.1'

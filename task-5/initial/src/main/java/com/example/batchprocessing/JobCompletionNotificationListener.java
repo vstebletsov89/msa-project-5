@@ -1,13 +1,8 @@
 package com.example.batchprocessing;
 
-import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.prometheus.metrics.exporter.pushgateway.PushGateway;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.BatchStatus;
@@ -18,7 +13,10 @@ import org.springframework.jdbc.core.DataClassRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -29,7 +27,6 @@ public class JobCompletionNotificationListener implements JobExecutionListener {
 
 	private final JdbcTemplate jdbcTemplate;
 	private final MeterRegistry meterRegistry;
-	private final String pushgatewayUrl;
 	private final PrometheusMeterRegistry prometheusMeterRegistry;
 	private final String pushgatewayUrl;
 
@@ -45,6 +42,7 @@ public class JobCompletionNotificationListener implements JobExecutionListener {
 			@Value("${pushgateway.url}") String pushgatewayUrl
 	) {
 		this.jdbcTemplate = jdbcTemplate;
+		this.meterRegistry = meterRegistry;
 		this.prometheusMeterRegistry = prometheusMeterRegistry;
 		this.pushgatewayUrl = pushgatewayUrl;
 
