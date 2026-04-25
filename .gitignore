@@ -1,0 +1,30 @@
+# ===== Gradle =====
+.gradle/
+**/.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ===== IDE =====
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Logs / runtime =====
+*.log
+logs/
+
+# ===== Python =====
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ===== Docker volumes / env  =====
+*.local
