@@ -1,0 +1,50 @@
+filebeat.inputs:
+  - type: filestream
+    id: docker-container-logs
+    enabled: true
+
+    paths:
+      - /var/lib/docker/containers/*/*.log
+
+    parsers:
+      - container:
+          stream: stdout
+          format: docker
+
+    prospector.scanner.exclude_files: ['\.gz$']
+    ignore_older: 10m
+
+processors:
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
+
+  - decode_json_fields:
+      fields: ["message"]
+      target: ""
+      overwrite_keys: true
+      add_error_key: true
+
+  - drop_event:
+      when:
+        not:
+          equals:
+            container.name: "stock-etl-app"
+
+  - drop_fields:
+      ignore_missing: true
+      fields:
+        - "container.labels.io_buildpacks_build_metadata"
+        - "container.labels.io_buildpacks_lifecycle_metadata"
+        - "container.labels.io_buildpacks_stack_id"
+
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+logging.level: info
+logging.to_files: false
+logging.to_syslog: false
+logging.metrics.enabled: false
