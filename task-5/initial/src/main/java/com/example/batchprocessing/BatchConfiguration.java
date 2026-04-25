@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.batch.core.launch.support.RunIdIncrementer;
 
 @Configuration
 public class BatchConfiguration {
@@ -59,6 +60,7 @@ public class BatchConfiguration {
 								Step step1,
 								JobCompletionNotificationListener listener) {
 		return new JobBuilder("importProductJob", jobRepository)
+				.incrementer(new RunIdIncrementer())
 				.listener(listener)
 				.start(step1)
 				.build();
