@@ -1,0 +1,46 @@
+plugins {
+	id 'org.springframework.boot' version '3.5.3'
+	id 'io.spring.dependency-management' version '1.1.6'
+	id 'java'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+
+	// Spring
+	implementation 'org.springframework.boot:spring-boot-starter-batch'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+
+	// Tracing: Micrometer Tracing + Brave (B3 / MDC)
+	implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+
+	// DB
+	runtimeOnly 'org.postgresql:postgresql'
+
+	// Monitoring
+	implementation 'io.micrometer:micrometer-registry-prometheus'
+
+	// Logging (JSON logs for ELK)
+	implementation 'net.logstash.logback:logstash-logback-encoder:8.1'
+
+	// Tests
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.batch:spring-batch-test'
+}
+
+test {
+	useJUnitPlatform()
+}

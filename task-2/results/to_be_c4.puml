@@ -1,0 +1,44 @@
+@startuml C4-Context-ToBe-B2B-PriceList
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+title C4 Container Diagram — B2B Price List Batch Module (To Be)
+
+Person(b2b_client, "B2B-клиент", "Партнёр магазина, получающий кастомный прайс-лист")
+Person(ops, "DevOps / SRE", "Следит за статусом джобов и алертами")
+
+System_Boundary(shop, "Онлайн-магазин (Kubernetes Cluster, Cloud)") {
+
+    Container(cronjob, "Price List CronJob", "Kubernetes CronJob", "Расписание `0 6 * * *`\nСоздаёт Job → Pod в 06:00")
+
+    Container(job_pod, "Price List Generator", "Python 3.13 container", "Читает данные из Postgres,\nформирует CSV/XLS на клиента,\nзагружает в Object Storage.\nRetry: backoffLimit=3")
+
+    ContainerDb(postgres, "Shop DB", "PostgreSQL", "Таблицы: products, categories,\nclients, client_prices")
+
+    Container(object_storage, "Price Lists Bucket", "Object Storage (S3 / GCS)", "Хранит сгенерированные\nCSV/XLS-файлы по ключу\nclient_id/date/pricelist.csv")
+
+    Container(api_gw, "B2B API / Portal", "Existing microservice", "Выдаёт B2B-клиентам\nподписанные ссылки на файлы")
+
+    Container(secrets, "Secrets Manager", "K8s Secrets / Cloud KMS", "Креды к Postgres\nи Object Storage")
+
+    Container(logs, "Logging", "ELK Stack", "stdout логов из Pod")
+
+    Container(metrics, "Monitoring", "Prometheus + Grafana + Alertmanager", "kube-state-metrics:\nkube_job_status_failed,\nkube_cronjob_next_schedule_time")
+}
+
+System_Ext(email, "Email Gateway", "SMTP / SES — нотификации об инцидентах")
+
+Rel(cronjob, job_pod, "Создаёт Job и Pod", "K8s API")
+Rel(job_pod, secrets, "Читает креды", "K8s API / env")
+Rel(job_pod, postgres, "SELECT + JOIN", "JDBC / psycopg")
+Rel(job_pod, object_storage, "Загружает CSV/XLS", "HTTPS (S3 API)")
+
+Rel(b2b_client, api_gw, "Запрашивает прайс-лист", "HTTPS")
+Rel(api_gw, object_storage, "Отдаёт pre-signed URL", "HTTPS")
+
+Rel(job_pod, logs, "Пишет логи", "stdout")
+Rel(job_pod, metrics, "Экспортирует метрики", "Prometheus Pushgateway")
+Rel(metrics, email, "Alert на падение Job", "SMTP")
+Rel(ops, metrics, "Мониторит статусы", "HTTPS")
+
+@enduml

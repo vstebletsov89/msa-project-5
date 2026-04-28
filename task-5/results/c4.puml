@@ -1,0 +1,58 @@
+@startuml C4-Container-ToBe-TradeWare-SpringBatch-Monitoring-Logging
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+title C4 Container Diagram — TradeWare Stock ETL with Monitoring, Alerting and Logging
+
+Person(warehouse_user, "Сотрудник склада", "Загружает CSV-отчёт по остаткам")
+Person(ops, "DevOps / SRE", "Мониторинг, алерты и анализ логов")
+
+System_Ext(smtp, "Email / Slack / Webhook", "Каналы оповещения инцидентов")
+
+System_Boundary(tradeware, "TradeWare Platform (GKE / GCP)") {
+
+  Container(erp_ui, "ERP UI", "Angular + WebSockets", "Загрузка CSV,\nотображение статуса обработки")
+
+  Container(erp_api, "ERP Monolith (legacy)", "Java 11 / WildFly", "Валидация формата CSV,\nзагрузка файла в GCS,\nтриггер Batch Job")
+
+  Container(gcs, "Reports Bucket", "Google Cloud Storage", "Хранение исходных CSV-отчётов")
+
+  Container(cronjob, "Batch Trigger", "Kubernetes Job / CronJob", "Запускает Spring Batch Job\nс параметрами fileName, runId")
+
+  Container(batch_app, "Stock ETL Batch", "Java 17 / Spring Boot 3 / Spring Batch 5", "Reader: FlatFileItemReader\nProcessor: enrich loyality_data\nWriter: JdbcBatchItemWriter\nChunk=10, retry/skip\nActuator + Micrometer\nStructured logs")
+
+  ContainerDb(pg, "Products DB", "PostgreSQL / Cloud SQL", "products,\nloyality_data,\nBATCH_* JobRepository")
+
+  Boundary(monitoring, "Monitoring & Alerting", "Prometheus / Grafana") {
+    Container(prom, "Prometheus", "Metrics Storage", "Scrape метрик приложения\n/actuator/prometheus")
+    Container(grafana, "Grafana", "Dashboards + Alerting", "Job duration,\nstep duration,\nread/write/skip count,\nJVM/CPU/memory,\nalert rules")
+  }
+
+  Boundary(logging, "Centralized Logging", "ELK Stack") {
+    Container(filebeat, "Filebeat", "Log Shipper", "Считывает логи приложения из stdout контейнера")
+    ContainerDb(es, "Elasticsearch", "Log Storage", "Индексация и хранение\nструктурированных логов")
+    Container(kibana, "Kibana", "Log UI", "Поиск и анализ логов\nпо jobId, stepName,\nstatus, error")
+  }
+}
+
+Rel(warehouse_user, erp_ui, "Загружает CSV-отчёт", "HTTPS")
+Rel(erp_ui, erp_api, "POST /upload", "REST / HTTPS")
+Rel(erp_api, gcs, "Сохраняет CSV", "HTTPS")
+Rel(erp_api, cronjob, "Создаёт Batch Job\nс параметрами запуска", "Kubernetes API")
+Rel(cronjob, batch_app, "Запускает контейнер\nSpring Batch", "Kubernetes")
+
+Rel(batch_app, gcs, "Читает CSV-файл", "HTTPS")
+Rel(batch_app, pg, "Читает loyality_data,\nпишет products,\nхранит BATCH_* metadata", "JDBC")
+
+Rel(batch_app, prom, "Публикует метрики", "HTTP /actuator/prometheus")
+Rel(prom, grafana, "Источник данных\nдля dashboard и alert rules", "PromQL")
+Rel(grafana, smtp, "Отправляет уведомления\nApplicationDown / JobFailed / SLA breach", "Email / Slack / Webhook")
+
+Rel(batch_app, filebeat, "Пишет batch-логи", "file / stdout")
+Rel(filebeat, es, "Отправляет события логов", "HTTP bulk API")
+Rel(kibana, es, "Читает индексы логов", "Elasticsearch API")
+
+Rel(ops, grafana, "Смотрит метрики,\ndashboards и алерты", "HTTPS")
+Rel(ops, kibana, "Анализирует batch-логи\nи ошибки обработки CSV", "HTTPS")
+
+@enduml
